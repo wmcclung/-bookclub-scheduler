@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Book Club Scheduler</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=DM+Sans:wght@400;500;600&display=swap');
+:root{--ink:#1c1610;--cream:#f7f2e9;--warm:#ede5d0;--border:#ddd5c0;--muted:#8a7d6a;--accent:#c0430f;--white:#fff;--rad:12px}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'DM Sans',sans-serif;background:var(--cream);color:var(--ink);min-height:100vh}
+
+/* HEADER */
+.hdr{background:var(--ink);padding:14px 18px;display:flex;align-items:center;gap:12px;position:sticky;top:0;z-index:50}
+.hdr h1{font-family:'Playfair Display',serif;font-size:17px;color:var(--cream)}
+.hdr p{font-size:11px;color:#8a7459;margin-top:1px}
+
+/* PAGES */
+.page{display:none}.page.active{display:block}
+.wrap{max-width:540px;margin:0 auto;padding:22px 16px 48px}
+
+/* SETUP */
+.pg-title{font-family:'Playfair Display',serif;font-size:22px;font-weight:900;margin-bottom:4px;margin-top:4px}
+.pg-sub{font-size:13px;color:var(--muted);margin-bottom:20px;line-height:1.5}
+.field{margin-bottom:14px}
+.field label{display:block;font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:5px}
+.field input{width:100%;border:1.5px solid var(--border);border-radius:10px;padding:11px 14px;font-size:15px;font-family:'DM Sans',sans-serif;background:var(--white);color:var(--ink);outline:none;transition:border-color .2s}
+.field input:focus{border-color:var(--accent)}
+.btn-main{width:100%;padding:13px;border-radius:10px;border:none;background:var(--accent);color:#fff;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:600;cursor:pointer}
+.btn-main:disabled{background:#bbb;cursor:not-allowed}
+
+/* POLL HEADER */
+.poll-hdr{background:var(--ink);color:var(--cream);border-radius:var(--rad);padding:14px 16px;margin-bottom:16px;display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.poll-hdr h2{font-family:'Playfair Display',serif;font-size:16px;margin-bottom:2px}
+.poll-hdr p{font-size:11px;color:#8a7459}
+.hdr-actions{display:flex;gap:6px;flex-shrink:0;margin-top:2px}
+.pill-btn{border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.08);color:var(--cream);border-radius:7px;padding:6px 11px;font-family:'DM Sans',sans-serif;font-size:11px;font-weight:500;cursor:pointer;white-space:nowrap;transition:background .15s}
+.pill-btn:hover{background:rgba(255,255,255,.16)}
+.pill-btn.ok{background:#2a7a2a;border-color:#2a7a2a}
+
+/* WHO BAR */
+.who-bar{background:var(--white);border:1.5px solid var(--border);border-radius:10px;padding:11px 14px;margin-bottom:16px;display:flex;align-items:center;gap:10px}
+.who-dot{width:13px;height:13px;border-radius:50%;flex-shrink:0}
+.who-name{font-size:14px;font-weight:600;flex:1}
+.who-change{font-size:11px;color:var(--muted);background:none;border:none;cursor:pointer;text-decoration:underline;padding:0}
+
+/* SECTION LABEL */
+.sec{font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:8px}
+
+/* CALENDAR */
+.cal-nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.cal-nav .mo{font-family:'Playfair Display',serif;font-size:15px;font-weight:700}
+.cal-nav button{background:none;border:none;cursor:pointer;font-size:20px;color:var(--muted);padding:2px 8px;border-radius:5px}
+.cal-nav button:hover{background:var(--warm)}
+.cgrid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;margin-bottom:3px}
+.dow{text-align:center;font-size:9px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);padding:2px 0 5px}
+.cell{background:var(--white);border:1.5px solid var(--border);border-radius:7px;min-height:46px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;cursor:pointer;transition:all .1s;padding:3px 1px;position:relative}
+.cell:hover{border-color:var(--accent);background:#fdf3ee}
+.cell.open{border-color:var(--accent);background:#fdf3ee}
+.cell.has-slots{border-color:#aaa}
+.cell.empty{background:transparent;border:none;cursor:default}
+.cell.past{opacity:.22;pointer-events:none}
+.cnum{font-size:12px;font-weight:500}
+.cdots{display:flex;gap:2px}
+.cdot{width:4px;height:4px;border-radius:50%}
+
+/* SLOT PANEL */
+.slot-panel{background:var(--white);border:1.5px solid var(--border);border-radius:10px;padding:13px 15px;margin-top:6px;margin-bottom:16px;display:none;animation:fadein .15s}
+.slot-panel.open{display:block}
+@keyframes fadein{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+.slot-panel-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:11px}
+.slot-panel-head h4{font-family:'Playfair Display',serif;font-size:14px;font-weight:700}
+.slot-panel-head .close{background:none;border:none;font-size:16px;cursor:pointer;color:var(--muted);padding:0;line-height:1}
+.slots{display:flex;gap:7px}
+.sbtn{flex:1;border:2px solid transparent;border-radius:9px;padding:10px 3px;cursor:pointer;font-family:'DM Sans',sans-serif;font-size:11px;font-weight:600;display:flex;flex-direction:column;align-items:center;gap:3px;transition:all .12s;position:relative}
+.sbtn .ico{font-size:17px}
+.sbtn.M{background:#fef9e7;color:#6b5000}.sbtn.M.on{background:#f5c800;border-color:#b89800;color:#3a2c00}
+.sbtn.A{background:#fef0e7;color:#6b2e00}.sbtn.A.on{background:#f07830;border-color:#b05610;color:#fff}
+.sbtn.E{background:#eeecf8;color:#2a1e5a}.sbtn.E.on{background:#3d2e80;border-color:#2a1e5e;color:#fff}
+.sbtn .saving-dot{display:none;position:absolute;top:4px;right:4px;width:5px;height:5px;border-radius:50%;background:rgba(0,0,0,.25);animation:pulse .8s infinite}
+.sbtn.saving .saving-dot{display:block}
+@keyframes pulse{0%,100%{opacity:.3}50%{opacity:1}}
+
+/* MANAGE PANEL */
+.manage-panel{background:var(--white);border:1.5px solid var(--border);border-radius:var(--rad);margin-bottom:16px;display:none}
+.manage-panel.open{display:block}
+.mp-head{padding:12px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.mp-head h3{font-family:'Playfair Display',serif;font-size:14px;font-weight:700}
+.mp-close{background:none;border:none;font-size:17px;cursor:pointer;color:var(--muted)}
+.mp-row{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border)}
+.mp-row:last-child{border-bottom:none}
+.mp-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.mp-name{font-size:13px;font-weight:600;flex:1}
+.mp-days{font-size:11px;color:var(--muted)}
+.mp-del{background:none;border:1px solid #ddd;border-radius:6px;padding:4px 9px;font-size:11px;font-weight:600;color:var(--accent);cursor:pointer;transition:all .12s}
+.mp-del:hover{background:#fdf3ee;border-color:var(--accent)}
+
+/* OVERLAP */
+.overlap-wrap{margin-top:22px}
+.overlap-empty{text-align:center;color:var(--muted);font-size:13px;padding:20px 0}
+.legend{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:14px}
+.leg{display:flex;align-items:center;gap:5px;font-size:11px;font-weight:500}
+.leg-dot{width:8px;height:8px;border-radius:50%}
+
+.oday{background:var(--white);border:1.5px solid var(--border);border-radius:var(--rad);margin-bottom:8px;overflow:hidden}
+.oday.hot{border-color:#aaa}
+.oday-head{padding:10px 14px 9px;display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--border)}
+.oday-label{font-family:'Playfair Display',serif;font-size:14px;font-weight:700;flex:1}
+.oday-score{font-size:11px;color:var(--muted);font-weight:500}
+.best-tag{font-size:10px;font-weight:700;background:var(--accent);color:#fff;border-radius:5px;padding:2px 7px}
+
+.oday-slots{padding:8px 12px 11px;display:flex;flex-direction:column;gap:6px}
+.oslot{display:flex;align-items:center;gap:9px}
+.oslot-name{font-size:10px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);width:64px;flex-shrink:0}
+.obar-wrap{flex:1}
+.obar{height:22px;border-radius:5px;background:var(--warm);position:relative;display:flex;overflow:hidden;margin-bottom:3px}
+.oseg{height:100%}
+.obar-lbl{position:absolute;right:7px;top:50%;transform:translateY(-50%);font-size:10px;font-weight:700;color:var(--ink)}
+.avs{display:flex;gap:2px;flex-wrap:wrap}
+.av{width:19px;height:19px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:7px;font-weight:700;color:#fff;flex-shrink:0}
+
+/* TOAST */
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(50px);background:var(--ink);color:var(--cream);padding:9px 18px;border-radius:8px;font-size:13px;z-index:300;transition:transform .2s,opacity .2s;pointer-events:none;opacity:0;white-space:nowrap}
+.toast.show{transform:translateX(-50%) translateY(0);opacity:1}
+.spinner{display:inline-block;width:13px;height:13px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-right:5px}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div class="hdr">
+  <div style="font-size:21px">📚</div>
+  <div><h1>Book Club Scheduler</h1><p id="hdr-sub">Find a time that works for everyone</p></div>
+</div>
+
+<!-- SETUP -->
+<div id="pg-setup" class="page active">
+  <div class="wrap" style="max-width:460px">
+    <div class="pg-title" id="setup-title">New poll</div>
+    <p class="pg-sub" id="setup-sub">Create a poll and share the link. Everyone just taps their available times — no accounts needed.</p>
+    <div id="setup-create">
+      <div class="field"><label>Your name</label><input id="creator-name" type="text" placeholder="e.g. Will" autocomplete="off"/></div>
+      <div class="field"><label>Poll title <span style="font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></label><input id="poll-title" type="text" placeholder="e.g. June Book Club"/></div>
+      <button class="btn-main" id="create-btn" onclick="createPoll()">Create & get link →</button>
+    </div>
+    <div id="setup-join" style="display:none">
+      <div class="field"><label>Your name</label><input id="join-name" type="text" placeholder="e.g. Sarah" autocomplete="off"/></div>
+      <button class="btn-main" id="join-btn" onclick="joinPoll()">Let's go →</button>
+    </div>
+  </div>
+</div>
+
+<!-- POLL -->
+<div id="pg-poll" class="page">
+  <div class="wrap">
+    <!-- header -->
+    <div class="poll-hdr">
+      <div><h2 id="poll-title-disp"></h2><p id="poll-resp">No responses yet</p></div>
+      <div class="hdr-actions">
+        <button class="pill-btn" onclick="toggleManage()">Manage</button>
+        <button class="pill-btn" id="copy-btn" onclick="copyLink()">Copy link</button>
+      </div>
+    </div>
+
+    <!-- manage panel -->
+    <div class="manage-panel" id="manage-panel">
+      <div class="mp-head">
+        <h3>Manage responses</h3>
+        <button class="mp-close" onclick="toggleManage()">✕</button>
+      </div>
+      <div id="mp-list"></div>
+    </div>
+
+    <!-- who am i -->
+    <div class="who-bar">
+      <div class="who-dot" id="who-dot"></div>
+      <span class="who-name" id="who-name"></span>
+      <button class="who-change" onclick="goChangeName()">not you?</button>
+    </div>
+
+    <!-- calendar -->
+    <div class="sec">Tap a day you're free</div>
+    <div class="cal-nav">
+      <button onclick="prevMo()">‹</button>
+      <span class="mo" id="mo-lbl"></span>
+      <button onclick="nextMo()">›</button>
+    </div>
+    <div class="cgrid" id="cgrid"></div>
+
+    <!-- slot panel -->
+    <div class="slot-panel" id="slot-panel">
+      <div class="slot-panel-head">
+        <h4 id="sp-title"></h4>
+        <button class="close" onclick="closeSlotPanel()">✕</button>
+      </div>
+      <div class="slots">
+        <button class="sbtn M" data-s="M" onclick="tapSlot(this)"><span class="ico">🌅</span>Morning<span class="saving-dot"></span></button>
+        <button class="sbtn A" data-s="A" onclick="tapSlot(this)"><span class="ico">☀️</span>Afternoon<span class="saving-dot"></span></button>
+        <button class="sbtn E" data-s="E" onclick="tapSlot(this)"><span class="ico">🌙</span>Evening<span class="saving-dot"></span></button>
+      </div>
+    </div>
+
+    <!-- overlap -->
+    <div class="overlap-wrap">
+      <div class="sec">Group availability</div>
+      <div id="overlap"></div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const COLORS=['#e05a2b','#2b7be0','#2ba84a','#9b2be0','#e0a82b','#2bc4e0','#e02b9b','#5be02b'];
+const MONTHS=['January','February','March','April','May','June','July','August','September','October','November','December'];
+const DOW=['Su','Mo','Tu','We','Th','Fr','Sa'];
+const SLOTS={M:{l:'Morning',e:'🌅'},A:{l:'Afternoon',e:'☀️'},E:{l:'Evening',e:'🌙'}};
+
+let pollId=null,pollMeta=null,allVotes=[];
+let myName=null,myColor=null,myAvail={};
+let activeDay=null,mo=new Date();mo.setDate(1);
+let saveTimer=null;
+
+// ── PAGE ──
+function show(id){document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.getElementById(id).classList.add('active');window.scrollTo(0,0)}
+
+// ── SETUP ──
+async function createPoll(){
+  const name=document.getElementById('creator-name').value.trim();
+  const title=document.getElementById('poll-title').value.trim();
+  if(!name){toast('Add your name!');return}
+  const btn=document.getElementById('create-btn');btn.disabled=true;btn.innerHTML='<span class="spinner"></span>Creating…';
+  try{
+    const r=await fetch('/api/polls',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title,creatorName:name})});
+    const d=await r.json();if(d.error)throw d.error;
+    pollId=d.id;myName=name;myColor=COLORS[0];myAvail={};
+    await loadPoll();enterPoll();
+  }catch(e){toast('Could not create poll.');console.error(e)}
+  finally{btn.disabled=false;btn.textContent='Create & get link →'}
+}
+
+async function joinPoll(){
+  const name=document.getElementById('join-name').value.trim();
+  if(!name){toast('Enter your name!');return}
+  const btn=document.getElementById('join-btn');btn.disabled=true;btn.innerHTML='<span class="spinner"></span>';
+  try{
+    await loadPoll();
+    myName=name;
+    const ex=allVotes.find(v=>v.voter_name.toLowerCase()===name.toLowerCase());
+    myColor=ex?ex.color:COLORS[allVotes.length%COLORS.length];
+    myAvail=ex?JSON.parse(JSON.stringify(ex.availability)):{};
+    enterPoll();
+  }catch(e){toast('Could not load poll.');console.error(e)}
+  finally{btn.disabled=false;btn.textContent='Let\'s go →'}
+}
+
+function enterPoll(){
+  document.getElementById('who-name').textContent=myName;
+  document.getElementById('who-dot').style.background=myColor;
+  document.getElementById('poll-title-disp').textContent=pollMeta.title;
+  document.getElementById('hdr-sub').textContent=pollMeta.title;
+  renderCal();renderOverlap();show('pg-poll');
+  setInterval(async()=>{await loadPoll();renderOverlap();if(document.getElementById('manage-panel').classList.contains('open'))renderManage()},20000);
+}
+
+function goChangeName(){
+  document.getElementById('setup-create').style.display='none';
+  document.getElementById('setup-join').style.display='block';
+  document.getElementById('setup-title').textContent='Who are you?';
+  document.getElementById('setup-sub').textContent='Enter your name to see and edit your availability.';
+  document.getElementById('join-name').value='';
+  show('pg-setup');
+}
+
+// ── DATA ──
+async function loadPoll(){
+  const r=await fetch(`/api/polls/${pollId}`);
+  if(!r.ok)throw'not found';
+  const d=await r.json();
+  pollMeta=d.poll;allVotes=d.votes;
+  const names=allVotes.map(v=>v.voter_name);
+  document.getElementById('poll-resp').textContent=names.length?`${names.length} ${names.length===1?'response':'responses'}: ${names.join(', ')}`:'No responses yet';
+}
+
+// Full replace — called after every tap
+async function persist(){
+  try{
+    const r=await fetch(`/api/polls/${pollId}/vote`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({voterName:myName,availability:myAvail})});
+    const d=await r.json();
+    if(d.color)myColor=d.color;
+    document.getElementById('who-dot').style.background=myColor;
+    await loadPoll();renderOverlap();
+    if(document.getElementById('manage-panel').classList.contains('open'))renderManage();
+  }catch(e){toast('Auto-save failed, try again.');console.error(e)}
+}
+
+// ── CALENDAR ──
+function renderCal(){
+  document.getElementById('mo-lbl').textContent=`${MONTHS[mo.getMonth()]} ${mo.getFullYear()}`;
+  const g=document.getElementById('cgrid');
+  g.innerHTML=DOW.map(d=>`<div class="dow">${d}</div>`).join('');
+  const y=mo.getFullYear(),m=mo.getMonth();
+  const first=new Date(y,m,1).getDay(),days=new Date(y,m+1,0).getDate();
+  const today=new Date();today.setHours(0,0,0,0);
+  for(let i=0;i<first;i++)g.innerHTML+=`<div class="cell empty"></div>`;
+  for(let d=1;d<=days;d++){
+    const dt=new Date(y,m,d),key=toKey(dt),past=dt<today;
+    const s=myAvail[key]||{},hasSel=Object.values(s).some(Boolean),isOpen=activeDay===key;
+    const dots=['M','A','E'].filter(x=>s[x]).map(x=>`<div class="cdot" style="background:${sc(x)}"></div>`).join('');
+    g.innerHTML+=`<div class="cell${past?' past':''}${isOpen?' open':hasSel?' has-slots':''}" onclick="tapDay('${key}')"><span class="cnum">${d}</span><div class="cdots">${dots}</div></div>`;
+  }
+}
+
+function tapDay(key){
+  if(activeDay===key){closeSlotPanel();return}
+  activeDay=key;
+  if(!myAvail[key])myAvail[key]={M:false,A:false,E:false};
+  const panel=document.getElementById('slot-panel');
+  document.getElementById('sp-title').textContent=fmtKey(key);
+  panel.classList.add('open');
+  ['M','A','E'].forEach(s=>document.querySelector(`.sbtn[data-s="${s}"]`).classList.toggle('on',!!myAvail[key][s]));
+  renderCal();
+  // scroll panel into view
+  setTimeout(()=>panel.scrollIntoView({behavior:'smooth',block:'nearest'}),50);
+}
+
+function closeSlotPanel(){
+  activeDay=null;
+  document.getElementById('slot-panel').classList.remove('open');
+  renderCal();
+}
+
+function tapSlot(btn){
+  if(!activeDay)return;
+  const s=btn.dataset.s;
+  myAvail[activeDay][s]=!myAvail[activeDay][s];
+  btn.classList.toggle('on');
+  // clean up empty days
+  if(!Object.values(myAvail[activeDay]).some(Boolean))delete myAvail[activeDay];
+  renderCal();
+  // instant persist — debounce 300ms to batch rapid taps
+  clearTimeout(saveTimer);
+  btn.classList.add('saving');
+  saveTimer=setTimeout(async()=>{
+    await persist();
+    document.querySelectorAll('.sbtn.saving').forEach(b=>b.classList.remove('saving'));
+  },300);
+}
+
+function prevMo(){mo.setMonth(mo.getMonth()-1);closeSlotPanel();renderCal()}
+function nextMo(){mo.setMonth(mo.getMonth()+1);closeSlotPanel();renderCal()}
+
+// ── MANAGE ──
+function toggleManage(){
+  const p=document.getElementById('manage-panel');
+  p.classList.toggle('open');
+  if(p.classList.contains('open'))renderManage();
+}
+
+function renderManage(){
+  const list=document.getElementById('mp-list');
+  if(!allVotes.length){list.innerHTML='<div style="padding:14px 16px;font-size:13px;color:var(--muted)">No responses yet.</div>';return}
+  list.innerHTML=allVotes.map(v=>{
+    const days=Object.keys(v.availability).length;
+    return`<div class="mp-row">
+      <div class="mp-dot" style="background:${v.color}"></div>
+      <div style="flex:1"><div class="mp-name">${v.voter_name}</div><div class="mp-days">${days} day${days!==1?'s':''} marked</div></div>
+      <button class="mp-del" onclick="deleteVoter('${encodeURIComponent(v.voter_name)}',this)">Remove</button>
+    </div>`;
+  }).join('');
+}
+
+async function deleteVoter(enc,btn){
+  const name=decodeURIComponent(enc);
+  if(!confirm(`Remove ${name}?`))return;
+  btn.disabled=true;btn.textContent='…';
+  try{
+    await fetch(`/api/polls/${pollId}/votes/${enc}`,{method:'DELETE'});
+    if(name.toLowerCase()===myName.toLowerCase()){myAvail={};renderCal();closeSlotPanel()}
+    await loadPoll();renderManage();renderOverlap();
+    toast(`${name} removed`);
+  }catch(e){toast('Error removing.');btn.disabled=false;btn.textContent='Remove'}
+}
+
+// ── OVERLAP ──
+function renderOverlap(){
+  const el=document.getElementById('overlap');
+  // merge allVotes with current unsaved myAvail for live preview
+  const effective=[
+    ...allVotes.filter(v=>v.voter_name.toLowerCase()!==myName.toLowerCase()),
+    ...(Object.keys(myAvail).length?[{voter_name:myName,color:myColor,availability:myAvail}]:[])
+  ];
+  if(!effective.length){el.innerHTML='<div class="overlap-empty">No one has marked availability yet.</div>';return}
+
+  // build legend
+  const legendHtml='<div class="legend">'+effective.map(v=>`<div class="leg"><div class="leg-dot" style="background:${v.color}"></div>${v.voter_name}${v.voter_name.toLowerCase()===myName.toLowerCase()?' (you)':''}</div>`).join('')+'</div>';
+
+  // tally every date/slot
+  const dateSet=new Set();effective.forEach(v=>Object.keys(v.availability).forEach(k=>dateSet.add(k)));
+  const dates=[...dateSet].sort();
+  const total=effective.length;
+  const tally={};
+  let bestScore=0;
+  dates.forEach(k=>{
+    tally[k]={M:[],A:[],E:[]};
+    effective.forEach(v=>{const av=v.availability[k];if(!av)return;['M','A','E'].forEach(s=>{if(av[s])tally[k][s].push(v)})});
+    const mx=Math.max(...['M','A','E'].map(s=>tally[k][s].length));
+    if(mx>bestScore)bestScore=mx;
+  });
+
+  // sort: best overlap first, then by date
+  const sorted=dates.map(k=>({k,best:Math.max(...['M','A','E'].map(s=>tally[k][s].length))}))
+    .sort((a,b)=>b.best-a.best||a.k.localeCompare(b.k));
+
+  const daysHtml=sorted.map(({k,best})=>{
+    if(best===0)return'';
+    const isBest=best===bestScore;
+    const slotRows=['M','A','E'].map(s=>{
+      const voters=tally[k][s];if(!voters.length)return'';
+      const segs=voters.map(v=>`<div class="oseg" style="width:${100/total}%;background:${v.color}cc"></div>`).join('');
+      const avs=voters.map(v=>`<div class="av" style="background:${v.color}" title="${v.voter_name}">${ini(v.voter_name)}</div>`).join('');
+      const allAvail=voters.length===total;
+      return`<div class="oslot">
+        <div class="oslot-name">${SLOTS[s].e} ${SLOTS[s].l}</div>
+        <div class="obar-wrap">
+          <div class="obar">${segs}<span class="obar-lbl" style="color:${allAvail?'#fff':''};font-weight:${allAvail?700:600}">${voters.length}/${total}${allAvail?' ✓':''}</span></div>
+          <div class="avs">${avs}</div>
+        </div>
+      </div>`;
+    }).filter(Boolean).join('');
+    if(!slotRows)return'';
+    return`<div class="oday${isBest?' hot':''}">
+      <div class="oday-head">
+        <div class="oday-label">${fmtKey(k)}</div>
+        <span class="oday-score">${best}/${total} free</span>
+        ${isBest?'<span class="best-tag">✦ Best</span>':''}
+      </div>
+      <div class="oday-slots">${slotRows}</div>
+    </div>`;
+  }).filter(Boolean).join('');
+
+  el.innerHTML=legendHtml+(daysHtml||'<div class="overlap-empty">Tap some days above to see overlap.</div>');
+}
+
+// ── SHARE ──
+function copyLink(){
+  const url=`${location.origin}/?poll=${pollId}`;
+  const btn=document.getElementById('copy-btn');
+  navigator.clipboard.writeText(url).then(()=>{btn.textContent='✓ Copied!';btn.classList.add('ok');setTimeout(()=>{btn.textContent='Copy link';btn.classList.remove('ok')},2200)}).catch(()=>toast(url));
+}
+
+// ── HELPERS ──
+function toKey(d){return`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`}
+function pad(n){return String(n).padStart(2,'0')}
+function fmtKey(k){const[y,m,d]=k.split('-').map(Number);return new Date(y,m-1,d).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'})}
+function ini(n){return n.split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2)}
+function sc(s){return s==='M'?'#f5c800':s==='A'?'#f07830':'#3d2e80'}
+function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2500)}
+
+// ── INIT ──
+(function(){
+  const p=new URLSearchParams(location.search).get('poll');
+  if(p){
+    pollId=p;
+    document.getElementById('setup-create').style.display='none';
+    document.getElementById('setup-join').style.display='block';
+    document.getElementById('setup-title').textContent='Who are you?';
+    document.getElementById('setup-sub').textContent='Enter your name to mark your available times.';
+  }
+})();
+</script>
+</body>
+</html>
