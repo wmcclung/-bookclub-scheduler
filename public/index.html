@@ -119,6 +119,21 @@ body{font-family:'DM Sans',sans-serif;background:var(--cream);color:var(--ink);m
 .avs{display:flex;gap:2px;flex-wrap:wrap}
 .av{width:19px;height:19px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:7px;font-weight:700;color:#fff;flex-shrink:0}
 
+/* HOME / MY POLLS */
+.hp-row{background:var(--white);border:1.5px solid var(--border);border-radius:var(--rad);padding:12px 14px;margin-bottom:10px;display:flex;align-items:center;gap:10px}
+.hp-main{flex:1;cursor:pointer;min-width:0}
+.hp-title{font-family:'Playfair Display',serif;font-size:15px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hp-meta{font-size:11px;color:var(--muted);margin-top:2px}
+.hp-actions{display:flex;gap:6px;flex-shrink:0}
+.hp-actions button{border:1px solid var(--border);background:var(--white);border-radius:7px;padding:6px 10px;font-family:'DM Sans',sans-serif;font-size:11px;font-weight:600;cursor:pointer;color:var(--ink);white-space:nowrap;transition:all .12s}
+.hp-actions button:hover{background:var(--warm)}
+.hp-actions button.del{color:var(--accent)}
+.hp-actions button.del:hover{background:#fdf3ee;border-color:var(--accent)}
+.hp-actions button.ok{background:#2a7a2a;border-color:#2a7a2a;color:#fff}
+.hp-empty{text-align:center;color:var(--muted);font-size:13px;padding:18px 0}
+.back-link{background:none;border:none;color:var(--muted);font-size:12px;cursor:pointer;padding:0;margin-bottom:14px;font-family:'DM Sans',sans-serif}
+.back-link:hover{color:var(--accent)}
+
 /* TOAST */
 .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(50px);background:var(--ink);color:var(--cream);padding:9px 18px;border-radius:8px;font-size:13px;z-index:300;transition:transform .2s,opacity .2s;pointer-events:none;opacity:0;white-space:nowrap}
 .toast.show{transform:translateX(-50%) translateY(0);opacity:1}
@@ -132,12 +147,34 @@ body{font-family:'DM Sans',sans-serif;background:var(--cream);color:var(--ink);m
   <div><h1>Book Club Scheduler</h1><p id="hdr-sub">Find a time that works for everyone</p></div>
 </div>
 
+<!-- ORGANIZER GATE -->
+<div id="pg-gate" class="page active">
+  <div class="wrap" style="max-width:400px">
+    <div class="pg-title">Organizer access</div>
+    <p class="pg-sub">Enter your passcode to create and manage polls. Respondents don't need this — they just use the link you send them.</p>
+    <div class="field"><label>Passcode</label><input id="gate-pass" type="password" placeholder="••••••••" autocomplete="off" onkeydown="if(event.key==='Enter')submitGate()"/></div>
+    <button class="btn-main" id="gate-btn" onclick="submitGate()">Unlock →</button>
+  </div>
+</div>
+
+<!-- HOME / MY POLLS -->
+<div id="pg-home" class="page">
+  <div class="wrap" style="max-width:460px">
+    <div class="pg-title">My polls</div>
+    <p class="pg-sub">A separate poll for each group or calendar. Share each link with the right people — up to 5 polls. Responses are kept independently per poll.</p>
+    <div id="home-list"></div>
+    <button class="btn-main" id="new-poll-btn" onclick="goNewPoll()" style="margin-top:6px">+ New poll</button>
+    <p id="home-cap-note" style="font-size:12px;color:var(--muted);margin-top:12px;text-align:center;display:none"></p>
+  </div>
+</div>
+
 <!-- SETUP -->
-<div id="pg-setup" class="page active">
+<div id="pg-setup" class="page">
   <div class="wrap" style="max-width:460px">
     <div class="pg-title" id="setup-title">New poll</div>
     <p class="pg-sub" id="setup-sub">Create a poll and share the link. Everyone just taps their available times — no accounts needed.</p>
     <div id="setup-create">
+      <button class="back-link" id="home-back" onclick="goHome()" style="display:none">← My polls</button>
       <div class="field"><label>Your name</label><input id="creator-name" type="text" placeholder="e.g. Will" autocomplete="off"/></div>
       <div class="field"><label>Poll title <span style="font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></label><input id="poll-title" type="text" placeholder="e.g. June Book Club"/></div>
       <button class="btn-main" id="create-btn" onclick="createPoll()">Create & get link →</button>
@@ -156,6 +193,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--cream);color:var(--ink);m
     <div class="poll-hdr">
       <div><h2 id="poll-title-disp"></h2><p id="poll-resp">No responses yet</p></div>
       <div class="hdr-actions">
+        <button class="pill-btn" id="mypolls-btn" onclick="goHome()" style="display:none">← My polls</button>
         <button class="pill-btn" onclick="toggleManage()">Manage</button>
         <button class="pill-btn" id="copy-btn" onclick="copyLink()">Copy link</button>
       </div>
@@ -218,10 +256,104 @@ const SLOTS={M:{l:'Morning',e:'🌅'},A:{l:'Afternoon',e:'☀️'},E:{l:'Evening
 let pollId=null,pollMeta=null,allVotes=[];
 let myName=null,myColor=null,myAvail={};
 let activeDay=null,mo=new Date();mo.setDate(1);
-let saveTimer=null;
+let saveTimer=null,pollTimer=null;
+let adminPass=null,homePolls=[];
+const MAX_POLLS=5;
 
 // ── PAGE ──
 function show(id){document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.getElementById(id).classList.add('active');window.scrollTo(0,0)}
+
+// ── ORGANIZER GATE + DASHBOARD ──
+function getPass(){return adminPass||localStorage.getItem('bcs_pass')||null}
+
+async function submitGate(){
+  const p=document.getElementById('gate-pass').value.trim();
+  if(!p){toast('Enter your passcode');return}
+  const btn=document.getElementById('gate-btn');btn.disabled=true;btn.innerHTML='<span class="spinner"></span>Checking…';
+  const ok=await loadHome(p);
+  if(!ok)toast('Wrong passcode');else document.getElementById('gate-pass').value='';
+  btn.disabled=false;btn.textContent='Unlock →';
+}
+
+// Authenticate + load the poll list from the server. Returns true if the passcode is valid.
+async function loadHome(pass){
+  if(!pass)return false;
+  try{
+    const r=await fetch('/api/admin/polls',{headers:{'x-admin-passcode':pass}});
+    if(r.status===401){adminPass=null;localStorage.removeItem('bcs_pass');return false}
+    if(!r.ok)throw'err';
+    const d=await r.json();
+    adminPass=pass;localStorage.setItem('bcs_pass',pass);
+    renderHome(d.polls);show('pg-home');
+    return true;
+  }catch(e){toast('Could not load polls.');console.error(e);return false}
+}
+
+function renderHome(polls){
+  homePolls=polls;
+  const list=document.getElementById('home-list');
+  const btn=document.getElementById('new-poll-btn');
+  const note=document.getElementById('home-cap-note');
+  const atMax=polls.length>=MAX_POLLS;
+  btn.disabled=atMax;
+  note.style.display=atMax?'block':'none';
+  note.textContent=`You've reached the maximum of ${MAX_POLLS} polls. Delete one to create another.`;
+  if(!polls.length){list.innerHTML='<div class="hp-empty">No polls yet. Create your first one below.</div>';return}
+  list.innerHTML=polls.map(homeRowHtml).join('');
+}
+
+function homeRowHtml(p){
+  const created=p.created_at?' · '+new Date(p.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric'}):'';
+  return`<div class="hp-row">
+    <div class="hp-main" onclick="openMyPoll('${p.id}')"><div class="hp-title">${esc(p.title)}</div><div class="hp-meta">${p.votes} response${p.votes===1?'':'s'}${created}</div></div>
+    <div class="hp-actions">
+      <button onclick="copyPollLink('${p.id}',this)">Copy link</button>
+      <button class="del" onclick="deleteMyPoll('${p.id}',this)">Delete</button>
+    </div>
+  </div>`;
+}
+
+function goNewPoll(){
+  document.getElementById('setup-create').style.display='block';
+  document.getElementById('setup-join').style.display='none';
+  document.getElementById('setup-title').textContent='New poll';
+  document.getElementById('setup-sub').textContent='Create a poll and share the link. Everyone just taps their available times — no accounts needed.';
+  document.getElementById('home-back').style.display='block';
+  document.getElementById('creator-name').value=localStorage.getItem('bcs_lastName')||'';
+  document.getElementById('poll-title').value='';
+  show('pg-setup');
+}
+
+async function goHome(){clearInterval(pollTimer);const ok=await loadHome(getPass());if(!ok)show('pg-gate')}
+
+async function openMyPoll(id){
+  const sp=homePolls.find(p=>p.id===id);
+  pollId=id;myName=sp&&sp.creator_name?sp.creator_name:null;
+  try{
+    await loadPoll();
+    if(!myName)myName=pollMeta.creator_name||'Organizer';
+    const ex=allVotes.find(v=>v.voter_name.toLowerCase()===myName.toLowerCase());
+    myColor=ex?ex.color:COLORS[allVotes.length%COLORS.length];
+    myAvail=ex?JSON.parse(JSON.stringify(ex.availability)):{};
+    enterPoll();
+  }catch(e){toast('Could not open poll.');console.error(e)}
+}
+
+function copyPollLink(id,btn){
+  const url=`${location.origin}/?poll=${id}`;
+  navigator.clipboard.writeText(url).then(()=>{const t=btn.textContent;btn.textContent='✓ Copied';btn.classList.add('ok');setTimeout(()=>{btn.textContent=t;btn.classList.remove('ok')},1800)}).catch(()=>toast(url));
+}
+
+async function deleteMyPoll(id,btn){
+  if(!confirm('Delete this poll and all its responses? This cannot be undone.'))return;
+  btn.disabled=true;btn.textContent='…';
+  try{
+    const r=await fetch(`/api/polls/${id}`,{method:'DELETE',headers:{'x-admin-passcode':getPass()||''}});
+    if(r.status===401){toast('Re-enter your passcode.');show('pg-gate');return}
+    await loadHome(getPass());
+    toast('Poll deleted');
+  }catch(e){toast('Error deleting.');btn.disabled=false;btn.textContent='Delete';console.error(e)}
+}
 
 // ── SETUP ──
 async function createPoll(){
@@ -230,9 +362,12 @@ async function createPoll(){
   if(!name){toast('Add your name!');return}
   const btn=document.getElementById('create-btn');btn.disabled=true;btn.innerHTML='<span class="spinner"></span>Creating…';
   try{
-    const r=await fetch('/api/polls',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title,creatorName:name})});
+    const r=await fetch('/api/polls',{method:'POST',headers:{'Content-Type':'application/json','x-admin-passcode':getPass()||''},body:JSON.stringify({title,creatorName:name})});
+    if(r.status===401){toast('Re-enter your passcode.');show('pg-gate');return}
+    if(r.status===409){toast(`Maximum of ${MAX_POLLS} polls — delete one first.`);return}
     const d=await r.json();if(d.error)throw d.error;
     pollId=d.id;myName=name;myColor=COLORS[0];myAvail={};
+    localStorage.setItem('bcs_lastName',name);
     await loadPoll();enterPoll();
   }catch(e){toast('Could not create poll.');console.error(e)}
   finally{btn.disabled=false;btn.textContent='Create & get link →'}
@@ -258,8 +393,10 @@ function enterPoll(){
   document.getElementById('who-dot').style.background=myColor;
   document.getElementById('poll-title-disp').textContent=pollMeta.title;
   document.getElementById('hdr-sub').textContent=pollMeta.title;
+  document.getElementById('mypolls-btn').style.display=getPass()?'inline-block':'none';
   renderCal();renderOverlap();show('pg-poll');
-  setInterval(async()=>{await loadPoll();renderOverlap();if(document.getElementById('manage-panel').classList.contains('open'))renderManage()},20000);
+  clearInterval(pollTimer);
+  pollTimer=setInterval(async()=>{await loadPoll();renderOverlap();if(document.getElementById('manage-panel').classList.contains('open'))renderManage()},20000);
 }
 
 function goChangeName(){
@@ -453,6 +590,7 @@ function toKey(d){return`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDa
 function pad(n){return String(n).padStart(2,'0')}
 function fmtKey(k){const[y,m,d]=k.split('-').map(Number);return new Date(y,m-1,d).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'})}
 function ini(n){return n.split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2)}
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
 function sc(s){return s==='M'?'#f5c800':s==='A'?'#f07830':'#3d2e80'}
 function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2500)}
 
@@ -460,11 +598,18 @@ function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t
 (function(){
   const p=new URLSearchParams(location.search).get('poll');
   if(p){
+    // Respondent flow — opened a shared link, no passcode needed.
     pollId=p;
     document.getElementById('setup-create').style.display='none';
     document.getElementById('setup-join').style.display='block';
     document.getElementById('setup-title').textContent='Who are you?';
     document.getElementById('setup-sub').textContent='Enter your name to mark your available times.';
+    show('pg-setup');
+  }else{
+    // Organizer flow — gate on passcode, then show the dashboard.
+    const cached=getPass();
+    if(cached)loadHome(cached).then(ok=>{if(!ok)show('pg-gate')});
+    else show('pg-gate');
   }
 })();
 </script>

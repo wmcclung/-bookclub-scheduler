@@ -35,10 +35,33 @@ async function initDb() {
   console.log('DB initialized');
 }
 
-app.post('/api/polls', async (req, res) => {
+const ADMIN_PASSCODE = process.env.ADMIN_PASSCODE || '';
+const MAX_POLLS = 5;
+
+function requireAdmin(req, res, next) {
+  if (!ADMIN_PASSCODE) return res.status(503).json({ error: 'Admin passcode not configured on server' });
+  if (req.get('x-admin-passcode') !== ADMIN_PASSCODE) return res.status(401).json({ error: 'Unauthorized' });
+  next();
+}
+
+// List every poll with its response count (organizer dashboard)
+app.get('/api/admin/polls', requireAdmin, async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT p.id, p.title, p.creator_name, p.created_at, COUNT(v.id)::int AS votes
+      FROM polls p LEFT JOIN votes v ON v.poll_id = p.id
+      GROUP BY p.id ORDER BY p.created_at DESC
+    `);
+    res.json({ polls: rows });
+  } catch (err) { console.error(err); res.status(500).json({ error: 'Server error' }); }
+});
+
+app.post('/api/polls', requireAdmin, async (req, res) => {
   try {
     const { title, creatorName } = req.body;
     if (!creatorName) return res.status(400).json({ error: 'Missing creatorName' });
+    const { rows: cnt } = await pool.query('SELECT COUNT(*)::int AS n FROM polls');
+    if (cnt[0].n >= MAX_POLLS) return res.status(409).json({ error: `Maximum of ${MAX_POLLS} polls reached` });
     const id = uuidv4().slice(0, 8);
     await pool.query('INSERT INTO polls (id, title, creator_name) VALUES ($1, $2, $3)',
       [id, title || 'Book Club', creatorName]);
@@ -83,6 +106,14 @@ app.delete('/api/polls/:id/votes/:voterName', async (req, res) => {
   try {
     await pool.query('DELETE FROM votes WHERE poll_id = $1 AND LOWER(voter_name) = LOWER($2)',
       [req.params.id, decodeURIComponent(req.params.voterName)]);
+    res.json({ ok: true });
+  } catch (err) { console.error(err); res.status(500).json({ error: 'Server error' }); }
+});
+
+// Delete an entire poll (votes cascade via FK)
+app.delete('/api/polls/:id', requireAdmin, async (req, res) => {
+  try {
+    await pool.query('DELETE FROM polls WHERE id = $1', [req.params.id]);
     res.json({ ok: true });
   } catch (err) { console.error(err); res.status(500).json({ error: 'Server error' }); }
 });
