@@ -12,6 +12,9 @@ app.use(express.static(path.join(__dirname, 'public')));
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+  max: 20,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 5000,
 });
 
 async function initDb() {
@@ -88,15 +91,19 @@ app.post('/api/polls/:id/vote', async (req, res) => {
     const { rows: existing } = await pool.query(
       'SELECT voter_name, color FROM votes WHERE poll_id = $1 ORDER BY submitted_at ASC',
       [req.params.id]);
-    const COLORS = ['#e05a2b','#2b7be0','#2ba84a','#9b2be0','#e0a82b','#2bc4e0','#e02b9b','#5be02b'];
+    const COLORS = ['#e05a2b','#2b7be0','#2ba84a','#9b2be0','#e0a82b','#2bc4e0','#e02b9b','#5be02b',
+      '#d23b3b','#3b4fd2','#1f8a6f','#b15be0','#8a6d3b','#2bd2a8','#e0c52b','#e0506b'];
     const match = existing.find(v => v.voter_name.toLowerCase() === voterName.toLowerCase());
     const color = match ? match.color : COLORS[existing.length % COLORS.length];
+    // Reuse the already-stored spelling so a different-case resubmit (e.g. "sarah"
+    // after "Sarah") updates the same row instead of creating a duplicate voter.
+    const nameToStore = match ? match.voter_name : voterName;
     await pool.query(`
       INSERT INTO votes (poll_id, voter_name, color, availability)
       VALUES ($1, $2, $3, $4)
       ON CONFLICT (poll_id, voter_name)
       DO UPDATE SET availability = $4, submitted_at = NOW()
-    `, [req.params.id, voterName, color, JSON.stringify(availability || {})]);
+    `, [req.params.id, nameToStore, color, JSON.stringify(availability || {})]);
     res.json({ ok: true, color });
   } catch (err) { console.error(err); res.status(500).json({ error: 'Server error' }); }
 });
